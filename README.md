@@ -64,9 +64,6 @@ Then someone invoiced **half a million dollars** for a “single pane of glass�
 ```
 
 
-<p align="center">
-  <img src="docs/images/ir-then-now.png" width="900" alt="Left: drowning in tasklist. Right: a process tree. Center: the expensive pane of glass, cancelled.">
-</p>
 
 TreePView is the other extreme.
 
@@ -84,9 +81,6 @@ TreePView is the other extreme.
                                  '------'                  leave.
 ```
 
-<p align="center">
-  <img src="docs/images/usb-kit.png" width="900" alt="tpv.exe on a USB stick, a sealed .tpv case, TreePView on the analysis PC">
-</p>
 
 No installer on the host. No service. No “phone home to enrich”. Collect, pull the stick, open the case.
 
