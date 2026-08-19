@@ -63,7 +63,6 @@ Then someone invoiced **half a million dollars** for a â€œsingle pane of glassâ€
          twelve charts. still one line of text.
 ```
 
-You were not investigating. You were waiting for a spinner invented by someone who has never grabbed a USB stick at 2 a.m.
 
 <p align="center">
   <img src="docs/images/ir-then-now.png" width="900" alt="Left: drowning in tasklist. Right: a process tree. Center: the expensive pane of glass, cancelled.">
