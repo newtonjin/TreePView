@@ -113,7 +113,7 @@ TreePView.exe E:\HOST-….tpv
 Paste hashes / IPs / names into **Hunt**. Export **CSV / JSONL / Report**. Click a finding instead of pretending you grepped 400 000 Security events by hand.
 
 <p align="center">
-  <img src="docs/images/viewer.png" width="900" alt="TreePView viewer: process tree, timeline, inspector">
+ <img width="1919" height="1031" alt="Captura de tela 2026-08-18 222302" src="https://github.com/user-attachments/assets/5ec6849c-ff1d-44fe-91e1-a9aa25f07c3e" />
 </p>
 
 ```text
