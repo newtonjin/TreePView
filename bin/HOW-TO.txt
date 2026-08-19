@@ -1,5 +1,11 @@
 TreePView — field card (keep this on the USB)
 
+        (•)
+       / | \
+     (•) (•) (!)     two binaries. USB only gets tpv.exe
+     / \   \
+   (•) (•) (•)
+
 1. Copy tpv.exe onto external media. Do not copy the repo.
 2. On the examined host, from the USB (example E:):
 

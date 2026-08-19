@@ -3,12 +3,21 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/title.png" width="640" alt="TreePView">
+  <img src="docs/assets/title.png" width="720" alt="TreePView">
 </p>
 
+```text
+        (•)
+       / | \
+     (•) (•) (!)     TreePView
+     / \   \         the process tree you can actually look at
+   (•) (•) (•)
+   ════════════════ timeline ══ ■ ■ ■■ ■ ■■
+```
+
 <p align="center">
-  <strong>Forensic triage with a process tree you can actually look at.</strong><br>
-  Two binaries. One USB stick. Zero agents. Zero spinning globes.
+  <strong>Two binaries. One USB stick. Zero agents. Zero spinning globes.</strong><br>
+  AI percentage: <strong>57%</strong>
 </p>
 
 <p align="center">
@@ -28,22 +37,66 @@
 
 ---
 
-Incident response used to mean squinting at `tasklist /v` until your retinas unionized. One line per process. No parents. No time. The “timeline” was you, scrolling, whispering *please let that be svchost*.
+## How IR used to feel
 
-Then the industry sold you a half-million-dollar single pane of glass. Twelve dashboards, a threat-heatworld-map, a playbook named after a bird — and the process you actually care about still rendered as **one sad row** in a grid that takes forty-five seconds to filter. You were not investigating. You were waiting for a spinner invented by someone who has never grabbed a USB stick at 2 a.m.
+```text
+  C:\> tasklist /v
+  Image Name    PID  Session  Mem Usage
+  ============  ===  =======  =========
+  svchost.exe   832  Console     12,448 K
+  svchost.exe   856  Console      8,192 K
+  svchost.exe   900  Console     14,220 K   ← is this the bad one. is THIS the bad one.
+  svchost.exe   944  Console      9,004 K
+         … 400 more lines. no parents. no time. no tree.
+              just you, a scrollbar, and a prayer.
+```
+
+Then someone invoiced **half a million dollars** for a “single pane of glass”:
+
+```text
+  ┌──────── $$$$$$ PANE OF GLASS $$$$$$ ────────┐
+  │  [globe] [heat] [bird playbook] [KPI: 99%]  │
+  │  Please wait while we enrich…  (45.2s)      │
+  │  ─────────────────────────────────────────  │
+  │  the process you care about:  one sad row   │
+  └─────────────────────────────────────────────┘
+         twelve charts. still one line of text.
+```
+
+You were not investigating. You were waiting for a spinner invented by someone who has never grabbed a USB stick at 2 a.m.
+
+<p align="center">
+  <img src="docs/images/ir-then-now.png" width="900" alt="Left: drowning in tasklist. Right: a process tree. Center: the expensive pane of glass, cancelled.">
+</p>
 
 TreePView is the other extreme.
 
-```
-examined host              USB                     your analysis box
-─────────────────────      ──────────              ─────────────────
-tpv.exe collect --out E:\   HOST-….tpv              TreePView.exe
-                            HOST-….tpv.sha256       look at the tree. leave.
+---
+
+## The kit (this is the whole product)
+
+```text
+   examined host                USB                     your analysis box
+  ─────────────────────        ──────────              ─────────────────
+   [ laptop on fire ]
+          |                      .------.
+          +---- tpv.exe -------> | USB  | ----.tpv---->  TreePView.exe
+                                 | stick|      +sha256     look at the tree.
+                                 '------'                  leave.
 ```
 
-No installer on the host. No service. No “phone home to enrich”. Collect, pull the stick, open the case. The viewer is a process tree, a timeline, and an inspector that can still name the EVTX it came from.
+<p align="center">
+  <img src="docs/images/usb-kit.png" width="900" alt="tpv.exe on a USB stick, a sealed .tpv case, TreePView on the analysis PC">
+</p>
+
+No installer on the host. No service. No “phone home to enrich”. Collect, pull the stick, open the case.
 
 **[Download v0.1](https://github.com/newtonjin/TreePView/releases/tag/v0.1.0)** · **[Field card](bin/HOW-TO.txt)** · **[Usage](docs/usage.md)** · **[Artifact catalog](docs/artifacts.md)**
+
+| | Binary | Where | What |
+|---|---|---|---|
+| <img src="docs/assets/icon.png" width="28" alt=""> | `tpv.exe` | Examined host (USB) | Collect. No network, no config file. |
+| <img src="docs/assets/icon.png" width="28" alt=""> | `TreePView.exe` | Analyst PC | Investigate. Never take this onto the incident host. |
 
 ---
 
@@ -70,16 +123,23 @@ Paste hashes / IPs / names into **Hunt**. Export **CSV / JSONL / Report**. Click
   <img src="docs/images/viewer.png" width="900" alt="TreePView viewer: process tree, timeline, inspector">
 </p>
 
-| Binary | Where it runs | What it does |
-|---|---|---|
-| `tpv.exe` | Examined host (USB) | Collect. No network, no config file. |
-| `TreePView.exe` | Analyst PC | Investigate. Never take this onto the incident host. |
+```text
+  ┌ PROCESSES ──────┐  ┌ TIMELINE / EVENTS ──────┐  ┌ INSPECTOR ─────┐
+  │ System          │  │  ▁▂▃▅▂▇▃▂▁  drag zoom   │  │ command line   │
+  │  └ services.exe │  │  4688  net  prefetch    │  │ sha256         │
+  │     └ evil.exe  │  │  hunt: hash / IP / name │  │ provenance     │
+  └─────────────────┘  └─────────────────────────┘  └────────────────┘
+```
 
 ---
 
 ## What v0.1 actually collects
 
-Live, in order of volatility:
+```text
+  clock → sockets → processes → services/drivers/Run
+       → image SHA-256 / Prefetch / tasks  →  EVTX
+                    (order of volatility. not a vibe.)
+```
 
 1. Clock and host identity
 2. TCP/UDP tables with owner PID
@@ -104,10 +164,31 @@ powershell -File bin\install.ps1
 
 Writes `bin\tpv.exe` and `bin\TreePView.exe`. `-Dev` opens the desktop window and http://127.0.0.1:5173/
 
+```text
+  rustc + npm  ──►  install.ps1  ──►  tpv.exe + TreePView.exe
+                         ▲
+                         └── analysis PC only. the USB gets one file.
+```
+
 ---
 
 ## Integrity
 
 Two SHA-256s: the file (`*.tpv.sha256`) and a *content digest* sealed inside the case. `tpv verify` and the viewer badge answer “is this still the evidence we sealed”. Findings are derived and do not change that digest.
 
-Apache-2.0. AI percentage: 57%.
+```text
+  case.tpv              sidecar                 inside the sqlite
+  ────────              ───────                 ────────────────
+  the bytes     +   case.tpv.sha256     +   sealed content digest
+                                              (findings do not count)
+```
+
+Apache-2.0.
+
+```text
+  ╔══════════════════════════════════════╗
+  ║   AI percentage: 57%                 ║
+  ║   (the other 43% is spite, caffeine, ║
+  ║    and a refusal to pay for a globe) ║
+  ╚══════════════════════════════════════╝
+```
