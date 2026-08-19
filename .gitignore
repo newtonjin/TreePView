@@ -1,0 +1,23 @@
+/target
+**/target
+
+# Forensic samples staged for the validation gate. Real artifacts from a real
+# host: never commit these.
+/.gate-samples/
+*.tpv
+*.evtx
+*.pf
+*.hve
+*.dmp
+*.raw
+
+# Viewer frontend
+node_modules/
+dist/
+apps/tpv-viewer/src-tauri/target/
+
+# Built binaries. Regenerate with `bin\install.ps1` rather than committing them.
+/bin/*.exe
+/bin/*.pdb
+/bin/*.dll
+/bin/*.sha256

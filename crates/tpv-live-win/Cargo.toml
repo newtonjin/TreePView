@@ -1,0 +1,37 @@
+[package]
+name = "tpv-live-win"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Volatile Windows state acquisition: processes, modules, network, services, drivers"
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "Wdk_System_Threading",
+    "Wdk_System_SystemInformation",
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Environment",
+    "Win32_System_Kernel",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Registry",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Services",
+    "Win32_System_Time",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+] }
+
+[dependencies]
+tpv-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

@@ -1,0 +1,31 @@
+TreePView — field card (keep this on the USB)
+
+1. Copy tpv.exe onto external media. Do not copy the repo.
+2. On the examined host, from the USB (example E:):
+
+     E:\tpv.exe collect --out E:\
+
+   That writes HOSTNAME-YYYYMMDDTHHMMSSZ.tpv on the USB.
+   --out FILE.tpv still works if you want a fixed name.
+   Do not write onto C:\ unless you must. That needs
+   --allow-local-write and it alters $MFT / $UsnJrnl.
+
+   Progress prints on stderr. Not elevated is a warning, not a stop.
+   Ctrl+C seals whatever was gathered (verify still works).
+
+3. Still on USB, check before you leave:
+
+     E:\tpv.exe info HOSTNAME-*.tpv
+     E:\tpv.exe verify HOSTNAME-*.tpv
+
+4. Take the .tpv and the .tpv.sha256 sidecar. On another PC,
+   double-click TreePView.exe (or: TreePView.exe E:\case.tpv).
+   Do not put TreePView.exe on the collection USB.
+
+Rebuild on a development machine:
+
+     powershell -File bin\install.ps1
+
+Dev UI (analysis PC only):  powershell -File bin\install.ps1 -Dev
+                           -> http://127.0.0.1:5173/
+Usage: docs\usage.md in the repository.

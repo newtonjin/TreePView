@@ -1,0 +1,78 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tpv-model",
+    "crates/tpv-format",
+    "crates/tpv-live-win",
+    "crates/tpv-memory",
+    "crates/tpv-collect",
+    "apps/tpv",
+    "apps/tpv-viewer/src-tauri",
+    "tools/m0-gate",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/newtonjin/TreePView"
+
+[workspace.dependencies]
+# Internal
+tpv-model = { path = "crates/tpv-model" }
+tpv-format = { path = "crates/tpv-format" }
+tpv-collect = { path = "crates/tpv-collect" }
+tpv-live-win = { path = "crates/tpv-live-win" }
+tpv-memory = { path = "crates/tpv-memory" }
+
+# Container
+rusqlite = { version = "0.40", features = ["bundled", "blob"] }
+zstd = "0.13"
+sha2 = "0.10"
+hex = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# CLI / diagnostics
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time. `jiff` is what `evtx` already hands us, so using it here avoids a lossy
+# conversion on the highest-volume artifact source.
+jiff = "0.2"
+uuid = { version = "1", features = ["v4"] }
+
+# Forensic parsers
+evtx = "0.12"
+notatin = "1.0"
+# notatin declares `nom = ">= 6"`, an unbounded range. Cargo resolves that to
+# nom 8, whose `Parser` is no longer callable, and notatin fails to compile.
+# Any crate depending on notatin must also depend on this to pin the resolution.
+nom = "7"
+ntfs-core = "0.9"
+ntfs-forensic = "0.8"
+vshadow = "0.2"
+prefetch-core = "0.1"
+prefetch-forensic = "0.4"
+
+# Platform
+windows = "0.62"
+sysinfo = "0.39"
+
+# Memory images are routinely larger than RAM, so they are mapped rather than
+# read, and scanned through the map.
+memmap2 = "0.9"
+memchr = "2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

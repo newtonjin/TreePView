@@ -1,0 +1,19 @@
+[package]
+name = "tpv-format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The .tpv portable case container: SQLite plus zstd blobs, with hashing and chain of custody"
+
+[dependencies]
+tpv-model.workspace = true
+rusqlite.workspace = true
+zstd.workspace = true
+sha2.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

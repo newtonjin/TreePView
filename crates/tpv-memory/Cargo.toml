@@ -1,0 +1,21 @@
+[package]
+name = "tpv-memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native analysis of raw memory images: address layers, x64 paging, and symbol-free structure recovery"
+
+[features]
+# Exposes `synthetic`, which builds memory images from scratch. Off by default so
+# it never ships in the collector.
+synthetic = []
+
+[dependencies]
+tpv-model.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+memmap2.workspace = true
+memchr.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TreePView",
+  "version": "0.1.0",
+  "identifier": "app.treepview.viewer",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "TreePView",
+        "width": 1600,
+        "height": 980,
+        "minWidth": 1100,
+        "minHeight": 700,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "shortDescription": "Forensic triage with a visual timeline",
+    "longDescription": "Opens a .tpv case or a memory image (.raw, crash dump, LiME, ELF core) and presents the process tree, unified timeline and artifact provenance for interactive analysis.",
+    "fileAssociations": [
+      {
+        "name": "TreePView case",
+        "description": "TreePView forensic case",
+        "ext": ["tpv"],
+        "mimeType": "application/x-treepview-case",
+        "role": "Editor"
+      },
+      {
+        "name": "Memory image",
+        "description": "Physical memory capture",
+        "ext": ["raw", "dmp", "mem", "vmem", "lime"],
+        "role": "Viewer"
+      }
+    ]
+  }
+}

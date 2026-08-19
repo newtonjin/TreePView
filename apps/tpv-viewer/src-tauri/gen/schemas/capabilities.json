@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Opening a case file is the only ambient capability the viewer needs; everything else goes through explicit commands.","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open","dialog:allow-save"]}}

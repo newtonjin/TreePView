@@ -1,0 +1,19 @@
+[package]
+name = "m0-gate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+evtx.workspace = true
+notatin.workspace = true
+nom.workspace = true # pins notatin's unbounded nom range; see workspace Cargo.toml
+ntfs-core.workspace = true
+ntfs-forensic.workspace = true
+vshadow.workspace = true
+prefetch-core.workspace = true
+prefetch-forensic.workspace = true
+rusqlite.workspace = true
+zstd.workspace = true
+sysinfo.workspace = true

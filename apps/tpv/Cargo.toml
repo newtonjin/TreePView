@@ -1,0 +1,19 @@
+[package]
+name = "tpv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "TreePView collector: produces a portable .tpv triage case"
+
+[[bin]]
+name = "tpv"
+path = "src/main.rs"
+
+[dependencies]
+tpv-collect.workspace = true
+tpv-format.workspace = true
+tpv-model.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+ctrlc = "3"
+serde_json.workspace = true
