@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="docs/assets/icon.png" width="128" alt="TreePView icon">
-</p>
 
 <p align="center">
   <img src="docs/assets/title.png" width="720" alt="TreePView">
