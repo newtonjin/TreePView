@@ -12,8 +12,8 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::State;
 use tpv_format::{
-    CaseMeta, CaseReader, Counts, EntityRow, EventFilter, EventRow, ProcessNode, RelatedEntity,
-    TimeBin,
+    CaseMeta, CaseReader, Counts, EntityRow, EventFilter, EventRow, LaneSeries, ProcessNode,
+    RelatedEntity, TimeBin,
 };
 use tpv_model::{Finding, ManifestEntry};
 
@@ -187,6 +187,18 @@ pub fn histogram(
 ) -> Result<Vec<TimeBin>> {
     let bins = bins.clamp(1, 4_000);
     state.with(|r| Ok(r.bin_events(&filter, from_ns, to_ns, bins)?))
+}
+
+#[tauri::command]
+pub fn histogram_lanes(
+    filter: EventFilter,
+    from_ns: i64,
+    to_ns: i64,
+    bins: u32,
+    state: State<'_, CaseState>,
+) -> Result<Vec<LaneSeries>> {
+    let bins = bins.clamp(1, 4_000);
+    state.with(|r| Ok(r.bin_lanes(&filter, from_ns, to_ns, bins)?))
 }
 
 #[tauri::command]

@@ -6,6 +6,7 @@ function proc(extra: Partial<ProcessNode> = {}): ProcessNode {
   return {
     entity_id: 6660,
     key: "proc:6660:1",
+    instance_id: "01TEST6660",
     label: "svch0st.exe",
     pid: 6660,
     started: { ns: 1, iso: "2026-08-18T14:22:01.123Z", exact: true },
@@ -18,6 +19,12 @@ function proc(extra: Partial<ProcessNode> = {}): ProcessNode {
     first_event_ns: 1,
     last_event_ns: 1,
     max_severity: "high",
+    parent_edge: "root",
+    claimed_ppid: null,
+    source_set: ["live"],
+    indicators: [],
+    related_logs: [],
+    related_logs_omitted: 0,
     children: [],
     ...extra,
   };
@@ -34,6 +41,7 @@ describe("processFields", () => {
         "Image: C:\\ProgramData\\svch0st.exe",
         "Command line: C:\\ProgramData\\svch0st.exe -c 203.0.113.7:443",
         "Started: 2026-08-18T14:22:01.123Z",
+        "Sources: live",
         "",
       ].join("\n"),
     );

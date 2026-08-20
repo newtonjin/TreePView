@@ -92,6 +92,7 @@ export interface ProcessStart {
 export interface ProcessNode {
   entity_id: number;
   key: string;
+  instance_id: string;
   label: string;
   pid: number | null;
   started: ProcessStart | null;
@@ -105,7 +106,24 @@ export interface ProcessNode {
   first_event_ns: number | null;
   last_event_ns: number | null;
   max_severity: Severity | null;
+  /** root | confirmed | inferred | orphaned | impossible */
+  parent_edge: string;
+  claimed_ppid: number | null;
+  source_set: string[];
+  indicators: string[];
+  related_logs: RelatedLog[];
+  related_logs_omitted: number;
   children: ProcessNode[];
+}
+
+export interface RelatedLog {
+  event_id: number;
+  log_id: number | null;
+  kind: string;
+  source: string;
+  iso: string;
+  summary: string;
+  ts_ns: number;
 }
 
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
@@ -264,6 +282,7 @@ export interface EventFilter {
   logIdContains?: string | null;
   logsOnly?: boolean;
   networkOnly?: boolean;
+  excludeKinds?: string[];
   suspectTimeOnly?: boolean;
   minSeverity?: Severity | null;
   iocs?: string[];
@@ -293,11 +312,30 @@ export const queryEvents = (filter: EventFilter, limit: number, offset: number) 
 export const histogram = (filter: EventFilter, fromNs: number, toNs: number, bins: number) =>
   invoke<TimeBin[]>("histogram", { filter, fromNs, toNs, bins });
 
+export interface LaneSeries {
+  lane: string;
+  bins: TimeBin[];
+}
+
+export const histogramLanes = (filter: EventFilter, fromNs: number, toNs: number, bins: number) =>
+  invoke<LaneSeries[]>("histogram_lanes", { filter, fromNs, toNs, bins });
+
 export const inspectEvent = (id: number) => invoke<EventDetail>("inspect_event", { id });
 export const inspectEntity = (key: string) => invoke<EntityDetail>("inspect_entity", { key });
 
 export const exportEvents = (path: string, format: "csv" | "jsonl" | "md", filter: EventFilter) =>
   invoke<void>("export_events", { path, format, filter });
+
+/** Live snapshots and module loads drown Event IDs on the default Events view. */
+export const NOISE_KINDS = ["module_load", "process_snapshot"];
+
+/** Apply the default kind exclusions unless the analyst already chose kinds. */
+export function withDefaultExcludes(f: EventFilter): EventFilter {
+  if (f.logsOnly || (f.kinds && f.kinds.length > 0) || (f.excludeKinds && f.excludeKinds.length > 0)) {
+    return f;
+  }
+  return { ...f, excludeKinds: [...NOISE_KINDS] };
+}
 
 const nonempty = (s: string | null | undefined): boolean => Boolean(s && s.trim());
 

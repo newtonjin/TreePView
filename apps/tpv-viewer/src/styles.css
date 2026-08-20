@@ -411,6 +411,40 @@ input:focus {
 .tree-row.context {
   opacity: 0.6;
 }
+.tree-row.inferred .tree-label {
+  border-bottom: 1px dashed var(--fg-faint);
+}
+.tree-row.orphaned .tree-label,
+.tree-row.impossible .tree-label {
+  color: var(--sev-medium);
+}
+.tree-flag.orphan {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tree-flag.logs {
+  font-size: 9px;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+.tree-row.log {
+  color: var(--fg-dim);
+}
+.tree-row.log .tree-label {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.tree-eid {
+  flex: none;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: #1b2a3d;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11px;
+}
 
 .tree-detail {
   margin-left: 10px;
@@ -476,6 +510,26 @@ input:focus {
   color: var(--fg-faint);
   pointer-events: none;
   font-family: var(--mono);
+}
+.tl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 2px 8px 6px 44px;
+  font-size: 10px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+}
+.tl-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tl-leg i {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  display: inline-block;
 }
 
 /* ---------- event table ---------- */
@@ -635,6 +689,9 @@ input:focus {
 /* Shown only to keep a match attached to its lineage, so it recedes. */
 .ev-row.context {
   opacity: 0.55;
+}
+.ev-row.log {
+  color: var(--fg-dim);
 }
 
 .cell {

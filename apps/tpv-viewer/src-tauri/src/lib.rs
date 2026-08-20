@@ -24,6 +24,7 @@ pub fn run() {
             commands::process_tree,
             commands::query_events,
             commands::histogram,
+            commands::histogram_lanes,
             commands::inspect_event,
             commands::inspect_entity,
             commands::manifest,

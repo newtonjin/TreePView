@@ -432,6 +432,12 @@ impl CaseWriter {
 
         self.conn.execute_batch("COMMIT")?;
         self.put_meta(schema::META_CUSTODY, &serde_json::to_string(&custody)?)?;
+        self.put_meta(
+            schema::META_MATCH_TOLERANCE_NS,
+            &tpv_model::DEFAULT_MATCH_TOLERANCE_NS.to_string(),
+        )?;
+        // Derived forest. Not evidence; excluded from the content digest.
+        crate::forest::persist(&self.conn, tpv_model::DEFAULT_MATCH_TOLERANCE_NS)?;
 
         let content_digest = self.compute_content_digest()?;
         self.put_meta(schema::META_CONTENT_DIGEST, &content_digest)?;

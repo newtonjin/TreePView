@@ -10,8 +10,8 @@
 /// type is identifiable without parsing any tables.
 pub const APPLICATION_ID: i32 = 0x5450_5631;
 
-/// Bumped only for changes a previous reader could misinterpret.
-pub const SCHEMA_VERSION: u32 = 1;
+/// Bumped when tables are added. Older readers ignore unknown tables.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Blob chunk size. Large enough that compression finds real redundancy in a
 /// minidump, small enough that seeking into a multi-gigabyte physical memory
@@ -164,6 +164,37 @@ CREATE TABLE finding_evidence (
     PRIMARY KEY (finding_id, event_id)
 ) WITHOUT ROWID;
 CREATE INDEX idx_finding_evidence_event ON finding_evidence(event_id);
+
+-- Derived process forest. Regenerable from events; not evidence.
+-- Identity is the ULID, never the PID: Windows recycles PIDs.
+CREATE TABLE process_instance (
+    id              TEXT PRIMARY KEY,
+    pid             INTEGER NOT NULL,
+    start_utc_ns    INTEGER,
+    exit_utc_ns     INTEGER,
+    image_path      TEXT,
+    user_sid        TEXT,
+    entity_id       INTEGER REFERENCES entities(id),
+    unlinked        INTEGER NOT NULL DEFAULT 0,
+    source_set      TEXT NOT NULL,
+    parent_edge     TEXT NOT NULL,
+    claimed_ppid    INTEGER,
+    parent_id       TEXT REFERENCES process_instance(id),
+    indicators      TEXT NOT NULL DEFAULT '[]',
+    event_ids       TEXT NOT NULL DEFAULT '[]',
+    start_exact     INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX idx_pi_pid_start ON process_instance(pid, start_utc_ns);
+
+CREATE TABLE process_field (
+    instance_id     TEXT NOT NULL REFERENCES process_instance(id),
+    field           TEXT NOT NULL,
+    value           TEXT,
+    source          TEXT NOT NULL,
+    confidence      TEXT NOT NULL,
+    observed_utc_ns INTEGER NOT NULL,
+    PRIMARY KEY (instance_id, field, source)
+);
 "#;
 
 // Metadata keys. Named constants because both the writer and the reader must
@@ -178,3 +209,6 @@ pub const META_PROFILE: &str = "collection_profile";
 pub const META_CUSTODY: &str = "custody";
 pub const META_FINALIZED: &str = "finalized";
 pub const META_CONTENT_DIGEST: &str = "content_digest";
+/// Nanoseconds. How far apart two stamps of the same PID may be and still
+/// count as one instance. Recorded on the case so reimport is reproducible.
+pub const META_MATCH_TOLERANCE_NS: &str = "process_match_tolerance_ns";

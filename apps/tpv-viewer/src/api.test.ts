@@ -43,9 +43,7 @@ describe("isFilterNarrowed", () => {
     expect(isFilterNarrowed({ logsOnly: true })).toBe(true);
   });
 
-  it("treats hunt IOCs and a severity floor as constraints", () => {
-    expect(isFilterNarrowed({ iocs: ["203.0.113.7"] })).toBe(true);
-    expect(isFilterNarrowed({ minSeverity: "high" })).toBe(true);
-    expect(isFilterNarrowed({ iocs: ["", "  "] })).toBe(false);
+  it("does not treat the default snapshot exclusion as an analyst filter", () => {
+    expect(isFilterNarrowed({ excludeKinds: ["module_load", "process_snapshot"] })).toBe(false);
   });
 });

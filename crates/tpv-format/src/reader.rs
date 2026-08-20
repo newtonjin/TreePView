@@ -92,6 +92,9 @@ pub struct ProcessStart {
 pub struct ProcessNode {
     pub entity_id: i64,
     pub key: String,
+    /// Deterministic ULID of this execution. PID is displayed; this is identity.
+    #[serde(default)]
+    pub instance_id: String,
     pub label: String,
     pub pid: Option<u32>,
     pub started: Option<ProcessStart>,
@@ -109,7 +112,38 @@ pub struct ProcessNode {
     pub last_event_ns: Option<i64>,
     /// Highest finding severity attached to this process, for tree decoration.
     pub max_severity: Option<Severity>,
+    /// `root` | `confirmed` | `inferred` | `orphaned` | `impossible`.
+    #[serde(default = "default_parent_edge")]
+    pub parent_edge: String,
+    pub claimed_ppid: Option<u32>,
+    #[serde(default)]
+    pub source_set: Vec<String>,
+    #[serde(default)]
+    pub indicators: Vec<String>,
+    /// Event-log rows that belong on this process's branch (4688, logon, net…).
+    #[serde(default)]
+    pub related_logs: Vec<RelatedLog>,
+    /// How many further correlated logs were omitted (cap, not missing evidence).
+    #[serde(default)]
+    pub related_logs_omitted: i64,
     pub children: Vec<ProcessNode>,
+}
+
+/// A Windows Event Log / Sysmon row hanging off a process in the tree.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RelatedLog {
+    pub event_id: i64,
+    pub log_id: Option<u32>,
+    pub kind: String,
+    pub source: String,
+    pub iso: String,
+    pub summary: String,
+    pub ts_ns: i64,
+}
+
+#[allow(dead_code)]
+fn default_parent_edge() -> String {
+    "root".into()
 }
 
 /// An entity as the inspector shows it.
@@ -143,6 +177,13 @@ pub struct TimeBin {
     pub count: i64,
 }
 
+/// One named band of the stacked timeline.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LaneSeries {
+    pub lane: String,
+    pub bins: Vec<TimeBin>,
+}
+
 /// Which events to consider. Every field narrows; an empty filter matches all.
 /// Deserializable so the viewer frontend can hand a filter straight to the
 /// backend. Every field defaults, so the frontend sends only what it constrains
@@ -155,6 +196,9 @@ pub struct EventFilter {
     pub pids: Vec<u32>,
     pub sources: Vec<Source>,
     pub kinds: Vec<EventKind>,
+    /// Drop these kinds. Used to keep module loads and live snapshots off the
+    /// default timeline so Event IDs are actually visible.
+    pub exclude_kinds: Vec<EventKind>,
     pub entity_key: Option<String>,
     /// Exact event ids, used to re-fetch a selection.
     pub event_ids: Vec<i64>,
@@ -232,6 +276,13 @@ impl EventFilter {
             let ph = vec!["?"; self.kinds.len()].join(",");
             clauses.push(format!("e.kind IN ({ph})"));
             for k in &self.kinds {
+                args.push(Box::new(k.as_str().to_string()));
+            }
+        }
+        if !self.exclude_kinds.is_empty() {
+            let ph = vec!["?"; self.exclude_kinds.len()].join(",");
+            clauses.push(format!("e.kind NOT IN ({ph})"));
+            for k in &self.exclude_kinds {
                 args.push(Box::new(k.as_str().to_string()));
             }
         }
@@ -380,6 +431,14 @@ fn like_clause(
 fn pid_from_process_key(key: &str) -> Option<u32> {
     let rest = key.strip_prefix("proc:")?;
     rest.split(':').next()?.parse().ok()
+}
+
+/// EVTX summaries are `[4688] cmd.exe started`. Recover the id when the column
+/// was not stored (older cases, or a parser that only put it in the text).
+pub(crate) fn parse_bracket_id(summary: &str) -> Option<u32> {
+    let rest = summary.strip_prefix('[')?;
+    let (num, _) = rest.split_once(']')?;
+    num.parse().ok()
 }
 
 /// Turn analyst input into a safe FTS5 query.
@@ -780,6 +839,11 @@ impl CaseReader {
                 tz_source: TzSource::from_str_lossy(&r.get::<_, String>(3)?),
                 flags: TsFlags(r.get::<_, i64>(4)? as u32),
             };
+            let summary: String = r.get(16)?;
+            let log_id = r
+                .get::<_, Option<i64>>(15)?
+                .map(|v| v as u32)
+                .or_else(|| parse_bracket_id(&summary));
             Ok(EventRow {
                 id: r.get(0)?,
                 iso: ts.to_rfc3339(),
@@ -794,8 +858,8 @@ impl CaseReader {
                 user: r.get(12)?,
                 path: r.get(13)?,
                 remote: r.get(14)?,
-                log_id: r.get::<_, Option<i64>>(15)?.map(|v| v as u32),
-                summary: r.get(16)?,
+                log_id,
+                summary,
                 has_payload: r.get(17)?,
             })
         })?;
@@ -871,129 +935,102 @@ impl CaseReader {
             .collect())
     }
 
-    /// Build the process forest.
-    ///
-    /// Assembled from `parent_of` edges rather than from raw PPID values,
-    /// because a PPID alone cannot survive PID reuse. Processes whose parent is
-    /// absent (already exited, or never collected) surface as roots instead of
-    /// being dropped, since an orphan is often the interesting one.
-    pub fn process_tree(&self) -> Result<Vec<ProcessNode>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT en.id, en.key, en.label, en.attrs,
-                    (SELECT MIN(ev.pid)      FROM events ev WHERE ev.entity_id = en.id),
-                    (SELECT COUNT(*)         FROM events ev WHERE ev.entity_id = en.id),
-                    (SELECT MIN(ev.ts_utc_ns) FROM events ev
-                      WHERE ev.entity_id = en.id AND ev.ts_flags & 3 = 0),
-                    (SELECT MAX(ev.ts_utc_ns) FROM events ev
-                      WHERE ev.entity_id = en.id AND ev.ts_flags & 3 = 0)
-             FROM entities en
-             WHERE en.kind = 'process'",
-        )?;
+    /// Stacked timeline: one density series per forensic lane, so a 4688 is not
+    /// drowned by module-load noise in a single histogram.
+    pub fn bin_lanes(
+        &self,
+        filter: &EventFilter,
+        from_ns: i64,
+        to_ns: i64,
+        bins: u32,
+    ) -> Result<Vec<LaneSeries>> {
+        let bins = bins.max(1);
+        let span = (to_ns - from_ns).max(1);
+        let width = (span / bins as i64).max(1);
 
-        let mut nodes: HashMap<String, ProcessNode> = HashMap::new();
-        for row in stmt.query_map([], |r| {
-            let key: String = r.get(1)?;
-            let attrs: Option<Vec<u8>> = r.get(3)?;
-            let attrs = attrs
-                .and_then(|z| zstd::decode_all(&z[..]).ok())
-                .and_then(|j| serde_json::from_slice::<serde_json::Value>(&j).ok());
-            let text = |k: &str| {
-                attrs
-                    .as_ref()
-                    .and_then(|a| a.get(k))
-                    .and_then(|v| v.as_str())
-                    .map(str::to_owned)
-            };
+        let mut scoped = filter.clone();
+        scoped.from_ns = Some(filter.from_ns.map_or(from_ns, |v| v.max(from_ns)));
+        scoped.to_ns = Some(filter.to_ns.map_or(to_ns, |v| v.min(to_ns)));
+        if scoped.exclude_kinds.is_empty() && scoped.kinds.is_empty() {
+            scoped.exclude_kinds = vec![EventKind::ModuleLoad, EventKind::ProcessSnapshot];
+        }
+        let (where_sql, args) = scoped.to_sql(self.has_log_id);
 
-            let first_event_ns: Option<i64> = r.get(6)?;
-            Ok(ProcessNode {
-                entity_id: r.get(0)?,
-                started: process_start(&key, first_event_ns),
-                key,
-                label: r.get(2)?,
-                pid: r.get::<_, Option<i64>>(4)?.map(|v| v as u32),
-                image: text("image_path"),
-                command_line: text("command_line"),
-                user: text("user"),
-                elevated: attrs
-                    .as_ref()
-                    .and_then(|a| a.get("elevated"))
-                    .and_then(|v| v.as_bool()),
-                access_error: text("access_error"),
-                event_count: r.get(5)?,
-                first_event_ns: r.get(6)?,
-                last_event_ns: r.get(7)?,
-                max_severity: None,
-                children: Vec::new(),
-            })
+        let sql = format!(
+            "SELECT CASE e.kind
+                    WHEN 'process_start' THEN 'start'
+                    WHEN 'process_end' THEN 'exit'
+                    WHEN 'execution_evidence' THEN 'exec'
+                    WHEN 'logon_session' THEN 'logon'
+                    WHEN 'service_install' THEN 'svc'
+                    WHEN 'service_state' THEN 'svc'
+                    WHEN 'task_register' THEN 'task'
+                    WHEN 'net_connection' THEN 'net'
+                    WHEN 'net_listen' THEN 'net'
+                    WHEN 'log_record' THEN 'evtx'
+                    ELSE 'other'
+                  END AS lane,
+                  (e.ts_utc_ns - ?) / ? AS bucket,
+                  COUNT(*)
+             FROM events e
+             WHERE {where_sql}
+             GROUP BY lane, bucket"
+        );
+
+        let mut bound: Vec<Box<dyn ToSql>> = vec![Box::new(from_ns), Box::new(width)];
+        bound.extend(args);
+        let refs: Vec<&dyn ToSql> = bound.iter().map(|b| b.as_ref()).collect();
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut by_lane: HashMap<String, HashMap<i64, i64>> = HashMap::new();
+        for row in stmt.query_map(refs.as_slice(), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))
         })? {
-            let n = row?;
-            nodes.insert(n.key.clone(), n);
+            let (lane, bucket, n) = row?;
+            by_lane
+                .entry(lane)
+                .or_default()
+                .insert(bucket.clamp(0, bins as i64 - 1), n);
         }
 
-        for (key, sev) in self.max_severity_by_entity()? {
-            if let Some(n) = nodes.get_mut(&key) {
-                n.max_severity = Some(sev);
-            }
-        }
-
-        let mut parent_of: Vec<(String, String)> = Vec::new();
-        let mut stmt = self.conn.prepare(
-            "SELECT p.key, c.key
-             FROM edges ed
-             JOIN entities p ON p.id = ed.from_id
-             JOIN entities c ON c.id = ed.to_id
-             WHERE ed.kind = 'parent_of'",
-        )?;
-        for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
-            parent_of.push(row?);
-        }
-
-        let mut parent_by_child: HashMap<String, String> = HashMap::new();
-        for (parent, child) in parent_of {
-            if nodes.contains_key(&parent) && nodes.contains_key(&child) && parent != child {
-                parent_by_child.insert(child, parent);
-            }
-        }
-
-        let mut children_by_parent: HashMap<String, Vec<String>> = HashMap::new();
-        let mut roots: Vec<String> = Vec::new();
-        for key in nodes.keys() {
-            match parent_by_child.get(key) {
-                Some(p) => children_by_parent.entry(p.clone()).or_default().push(key.clone()),
-                None => roots.push(key.clone()),
-            }
-        }
-
-        // Chronological, because the tree doubles as a lineage timeline: reading
-        // it top to bottom should follow the order things actually started.
-        roots.sort_by_key(|k| (order_key(&nodes[k]), k.clone()));
-        Ok(roots
-            .into_iter()
-            .map(|k| assemble(&k, &mut nodes, &children_by_parent, 0))
+        const ORDER: &[&str] = &["start", "exit", "exec", "logon", "svc", "task", "net", "evtx", "other"];
+        Ok(ORDER
+            .iter()
+            .filter_map(|name| {
+                let counts = by_lane.get(*name)?;
+                Some(LaneSeries {
+                    lane: (*name).to_string(),
+                    bins: (0..bins)
+                        .map(|i| {
+                            let start = from_ns + width * i as i64;
+                            TimeBin {
+                                index: i,
+                                start_ns: start,
+                                end_ns: start + width,
+                                count: counts.get(&(i as i64)).copied().unwrap_or(0),
+                            }
+                        })
+                        .collect(),
+                })
+            })
+            .filter(|s| s.bins.iter().any(|b| b.count > 0))
             .collect())
     }
 
-    fn max_severity_by_entity(&self) -> Result<Vec<(String, Severity)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT en.key, f.severity
-             FROM findings f JOIN entities en ON en.id = f.entity_id",
-        )?;
-        let mut best: HashMap<String, Severity> = HashMap::new();
-        for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
-            let (key, sev) = row?;
-            let Some(sev) = Severity::from_str_lossy(&sev) else {
-                continue;
-            };
-            best.entry(key)
-                .and_modify(|cur| {
-                    if sev.rank() > cur.rank() {
-                        *cur = sev;
-                    }
-                })
-                .or_insert(sev);
-        }
-        Ok(best.into_iter().collect())
+    /// Build the process forest.
+    ///
+    /// Identity is a `process_instance` ULID, not a PID: Windows recycles PIDs,
+    /// and a PPID that names a process which had already exited is not a parent.
+    /// Impossible edges are dropped; those children surface as annotated roots.
+    pub fn process_tree(&self) -> Result<Vec<ProcessNode>> {
+        let tol = crate::forest::match_tolerance(&self.conn);
+        let forest = crate::forest::load_or_build(&self.conn, tol)?;
+        crate::forest::materialize(&self.conn, &forest)
+    }
+
+    pub(crate) fn process_forest(&self) -> Result<tpv_model::Forest> {
+        let tol = crate::forest::match_tolerance(&self.conn);
+        crate::forest::load_or_build(&self.conn, tol)
     }
 
     /// Fetch a single event by id, for the inspector.
@@ -1344,87 +1381,6 @@ fn entity_row_offset(
     })
 }
 
-/// Work out when a process began.
-///
-/// The creation time embedded in the natural key is authoritative when it is
-/// there. When it is not — the collector could not open the process, so it fell
-/// back to a PID-only key — the first observation is the best available answer
-/// and is marked inexact rather than presented as a start time.
-fn process_start(key: &str, first_event_ns: Option<i64>) -> Option<ProcessStart> {
-    let from_key: Option<i64> = key.rsplit(':').next().and_then(|s| s.parse().ok());
-    let (ns, exact) = match from_key {
-        Some(ns) => (ns, true),
-        None => (first_event_ns?, false),
-    };
-    Some(ProcessStart {
-        ns,
-        iso: Timestamp::new(ns, TsPrecision::HundredNanos, TzSource::NativeUtc).to_rfc3339(),
-        exact,
-    })
-}
-
-/// A timestamp read back from a bare nanosecond column, where the surrounding
-/// precision metadata was not stored separately.
 fn bare_ts(ns: i64) -> Timestamp {
     Timestamp::new(ns, TsPrecision::Nanosecond, TzSource::NativeUtc)
-}
-
-/// Sort position of a process: when it started, or when it was first seen.
-///
-/// Processes with neither sort last rather than to the epoch, so a missing time
-/// never fabricates a process that appears to predate the boot.
-fn order_key(n: &ProcessNode) -> i64 {
-    n.started
-        .as_ref()
-        .map(|s| s.ns)
-        .or(n.first_event_ns)
-        .unwrap_or(i64::MAX)
-}
-
-/// Depth-first assembly of the process forest, with a hard depth limit.
-///
-/// The limit is not paranoia about deep trees: a case is untrusted input, and a
-/// crafted or corrupt `parent_of` cycle that slipped past the self-parent check
-/// would otherwise recurse until the stack gives out.
-fn assemble(
-    key: &str,
-    nodes: &mut HashMap<String, ProcessNode>,
-    children: &HashMap<String, Vec<String>>,
-    depth: u32,
-) -> ProcessNode {
-    const MAX_DEPTH: u32 = 64;
-
-    let mut node = nodes
-        .remove(key)
-        .unwrap_or_else(|| ProcessNode {
-            entity_id: -1,
-            key: key.to_string(),
-            label: key.to_string(),
-            pid: None,
-            started: None,
-            image: None,
-            command_line: None,
-            user: None,
-            elevated: None,
-            access_error: None,
-            event_count: 0,
-            first_event_ns: None,
-            last_event_ns: None,
-            max_severity: None,
-            children: Vec::new(),
-        });
-
-    if depth < MAX_DEPTH {
-        if let Some(kids) = children.get(key) {
-            let mut kids = kids.clone();
-            kids.sort();
-            for k in kids {
-                if nodes.contains_key(&k) {
-                    node.children.push(assemble(&k, nodes, children, depth + 1));
-                }
-            }
-            node.children.sort_by_key(|c| (order_key(c), c.pid));
-        }
-    }
-    node
 }

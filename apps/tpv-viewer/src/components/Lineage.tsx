@@ -13,7 +13,7 @@ const COLUMNS: ColumnSpec[] = [
   { id: "start", label: "Started (UTC)", width: 210, min: 90 },
   { id: "delta", label: "After parent", width: 92, min: 56, align: "right" },
   { id: "process", label: "Process", width: 330, min: 140 },
-  { id: "pid", label: "PID", width: 58, min: 40, align: "right" },
+  { id: "pid", label: "PID / Event ID", width: 88, min: 48, align: "right" },
   { id: "user", label: "User", width: 140, min: 60 },
   { id: "cmdline", label: "Command line", width: 400, min: 120, flex: true },
 ];
@@ -33,6 +33,7 @@ export function Lineage({
   onToggle,
   match,
   selected,
+  selectedEventId,
   onSelect,
 }: {
   roots: ProcessNode[];
@@ -40,7 +41,8 @@ export function Lineage({
   onToggle: (key: string) => void;
   match?: (n: ProcessNode) => boolean;
   selected: string | null;
-  onSelect: (n: ProcessNode) => void;
+  selectedEventId: number | null;
+  onSelect: (n: ProcessNode, logEventId?: number) => void;
 }) {
   const rows = useMemo(
     () => flattenForest(roots, collapsed, match),
@@ -80,11 +82,15 @@ export function Lineage({
             <div style={{ transform: `translateY(${v.padTop}px)` }}>
               {rows.slice(v.first, v.last).map((row) => (
                 <Row
-                  key={row.node.key}
+                  key={row.log ? `${row.node.key}:log:${row.log.event_id}` : row.node.key}
                   row={row}
                   style={style}
                   parentNs={parentStart.get(row.node.key) ?? null}
-                  selected={selected === row.node.key}
+                  selected={
+                    row.log
+                      ? selectedEventId === row.log.event_id
+                      : selected === row.node.key && selectedEventId == null
+                  }
                   onToggle={onToggle}
                   onSelect={onSelect}
                   onMenu={(e, n, field) => {
@@ -115,10 +121,44 @@ function Row({
   parentNs: number | null;
   selected: boolean;
   onToggle: (key: string) => void;
-  onSelect: (n: ProcessNode) => void;
+  onSelect: (n: ProcessNode, logEventId?: number) => void;
   onMenu: (e: React.MouseEvent, n: ProcessNode, field?: string) => void;
 }) {
   const n = row.node;
+  const log = row.log;
+
+  if (log) {
+    return (
+      <div
+        className={`ev-row log${selected ? " sel" : ""}`}
+        onClick={() => onSelect(n, log.event_id)}
+        title={log.summary}
+      >
+        <span className="cell mono" style={style.start}>
+          {log.iso}
+        </span>
+        <span className="cell mono right dimmed" style={style.delta} />
+        <span className="cell" style={style.process}>
+          <span style={{ width: row.depth * 14, flex: "0 0 auto" }} />
+          <span className="twisty-gap" />
+          <span className="tree-eid">{log.log_id ?? "—"}</span>
+          <span className="proc-name dimmed" title={log.summary}>
+            {log.kind}
+          </span>
+        </span>
+        <span className="cell mono right" style={style.pid}>
+          {log.log_id ?? ""}
+        </span>
+        <span className="cell dimmed" style={style.user}>
+          {log.source}
+        </span>
+        <span className="cell mono" style={style.cmdline} title={log.summary}>
+          {log.summary}
+        </span>
+      </div>
+    );
+  }
+
   const started = n.started;
   const gap =
     started && parentNs !== null && started.ns >= parentNs

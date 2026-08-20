@@ -21,6 +21,7 @@ pub mod blob;
 pub mod error;
 pub mod export;
 pub mod findings;
+pub mod forest;
 pub mod hash;
 pub mod reader;
 pub mod schema;
@@ -30,8 +31,8 @@ pub use blob::{BlobInfo, BlobReader};
 pub use error::{FormatError, Result};
 pub use export::{case_markdown, events_csv, events_jsonl};
 pub use reader::{
-    CaseMeta, CaseReader, Counts, EntityRow, EventFilter, EventRow, ProcessNode, RelatedEntity,
-    TimeBin,
+    CaseMeta, CaseReader, Counts, EntityRow, EventFilter, EventRow, LaneSeries, ProcessNode,
+    RelatedEntity, RelatedLog, TimeBin,
 };
 pub use schema::{APPLICATION_ID, SCHEMA_VERSION};
 pub use writer::{CaseInit, CaseSummary, CaseWriter};

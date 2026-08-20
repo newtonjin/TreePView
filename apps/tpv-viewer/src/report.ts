@@ -31,6 +31,10 @@ export function processFields(n: ProcessNode): ReportField[] {
     });
   }
   if (n.access_error) fields.push({ label: "Not inspected", value: n.access_error });
+  if (n.source_set.length) fields.push({ label: "Sources", value: n.source_set.join(", ") });
+  if (n.parent_edge && n.parent_edge !== "root" && n.parent_edge !== "confirmed") {
+    fields.push({ label: "Parent edge", value: n.parent_edge });
+  }
   return fields;
 }
 

@@ -303,6 +303,155 @@ fn process_tree_nests_by_parent_edges() {
 }
 
 #[test]
+fn recycled_pid_does_not_draw_a_false_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("recycle.tpv");
+    let mut w = CaseWriter::create(&path, init()).unwrap();
+
+    // pid 800 lives, dies, then is reused. A child born in the gap must not
+    // hang under the recycled occupant.
+    for (pid, ppid, at, image, kind) in [
+        (4u32, 0u32, 1_000i64, r"C:\Windows\System32\ntoskrnl.exe", EventKind::ProcessStart),
+        (800, 4, 2_000, r"C:\Windows\System32\services.exe", EventKind::ProcessStart),
+        (800, 4, 5_000, r"C:\Windows\System32\services.exe", EventKind::ProcessEnd),
+        (1337, 800, 3_000, r"C:\Windows\System32\cmd.exe", EventKind::ProcessStart),
+        (800, 4, 9_000, r"C:\Windows\System32\svchost.exe", EventKind::ProcessStart),
+        (9999, 800, 6_000, r"C:\Users\Public\evil.exe", EventKind::ProcessStart),
+        (4242, 4, 1_000, r"C:\Windows\System32\cmd.exe", EventKind::ProcessStart),
+        (4242, 4, 1_000_000_000_000, r"C:\Windows\System32\cmd.exe", EventKind::ProcessStart),
+        (4242, 4, 2_000_000_000_000, r"C:\Windows\System32\cmd.exe", EventKind::ProcessStart),
+    ] {
+        w.add_event(
+            &Event::new(
+                ts(at),
+                Source::Evtx,
+                kind,
+                format!("{image} pid {pid}"),
+            )
+            .with_process(pid, Some(ppid), Some(image.into()))
+            .with_log_id(if kind == EventKind::ProcessEnd { 4689 } else { 4688 }),
+        )
+        .unwrap();
+    }
+    w.finish(custody()).unwrap();
+
+    let r = CaseReader::open(&path).unwrap();
+    let roots = r.process_tree().unwrap();
+
+    fn find_pid(nodes: &[crate::ProcessNode], pid: u32) -> Option<&crate::ProcessNode> {
+        for n in nodes {
+            if n.pid == Some(pid) {
+                return Some(n);
+            }
+            if let Some(h) = find_pid(&n.children, pid) {
+                return Some(h);
+            }
+        }
+        None
+    }
+
+    let cmd = find_pid(&roots, 1337).expect("cmd under the living services.exe");
+    assert_eq!(cmd.parent_edge, "confirmed");
+
+    let evil = find_pid(&roots, 9999).expect("evil still visible");
+    assert_eq!(evil.parent_edge, "impossible");
+    assert!(
+        find_pid(&find_pid(&roots, 800).unwrap().children, 9999).is_none(),
+        "evil must not sit under a recycled pid 800"
+    );
+
+    let mut recycled = 0u32;
+    let walk = &mut |n: &crate::ProcessNode| {
+        if n.pid == Some(4242) {
+            recycled += 1;
+        }
+    };
+    fn walk_all(nodes: &[crate::ProcessNode], f: &mut dyn FnMut(&crate::ProcessNode)) {
+        for n in nodes {
+            f(n);
+            walk_all(&n.children, f);
+        }
+    }
+    walk_all(&roots, walk);
+    assert_eq!(recycled, 3, "the same PID recycled three times is three instances");
+
+    let first_800 = find_pid(&roots, 800).expect("living services.exe");
+    assert!(
+        first_800
+            .related_logs
+            .iter()
+            .any(|l| l.log_id == Some(4688) && l.ts_ns == 2_000),
+        "4688 for the first occupant hangs on that instance, not a sibling"
+    );
+    assert!(
+        first_800
+            .related_logs
+            .iter()
+            .all(|l| l.ts_ns < 9_000),
+        "the recycled occupant's 4688 must not appear under the first pid 800"
+    );
+    assert!(
+        cmd.related_logs.iter().any(|l| l.log_id == Some(4688)),
+        "cmd.exe's own 4688 sits on cmd's branch"
+    );
+}
+
+#[test]
+fn related_logs_hang_event_ids_on_the_process_branch() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("case.tpv");
+    build_case(&path);
+    let r = CaseReader::open(&path).unwrap();
+    let roots = r.process_tree().unwrap();
+
+    fn find_pid(nodes: &[crate::ProcessNode], pid: u32) -> Option<&crate::ProcessNode> {
+        for n in nodes {
+            if n.pid == Some(pid) {
+                return Some(n);
+            }
+            if let Some(h) = find_pid(&n.children, pid) {
+                return Some(h);
+            }
+        }
+        None
+    }
+
+    let evil = find_pid(&roots, 1337).expect("evil.exe");
+    assert!(
+        evil.related_logs
+            .iter()
+            .any(|l| l.kind == "net_connection" && l.summary.contains("203.0.113.7")),
+        "network activity belongs on the process that made it, not a flat dump"
+    );
+    assert!(
+        evil.related_logs.iter().all(|l| l.kind != "process_snapshot"),
+        "live snapshots stay off the branch so Event IDs remain readable"
+    );
+}
+
+#[test]
+fn default_timeline_lanes_drop_snapshot_noise() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("case.tpv");
+    build_case(&path);
+    let r = CaseReader::open(&path).unwrap();
+
+    let hidden = EventFilter {
+        exclude_kinds: vec![EventKind::ProcessSnapshot, EventKind::ModuleLoad],
+        ..Default::default()
+    };
+    assert_eq!(r.count_events(&hidden).unwrap(), 4);
+
+    let lanes = r.bin_lanes(&EventFilter::default(), 0, 10_000, 10).unwrap();
+    assert!(lanes.iter().any(|s| s.lane == "net"));
+    assert!(lanes.iter().any(|s| s.lane == "exec"));
+    assert!(
+        !lanes.iter().any(|s| s.lane == "start"),
+        "build_case has no 4688; process_snapshot must not be relabelled as start"
+    );
+}
+
+#[test]
 fn filters_narrow_by_pid_source_and_network() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("case.tpv");

@@ -19,6 +19,7 @@ function proc(
   return {
     entity_id: pid,
     key: `proc:${pid}:${startNs ?? "unknown"}`,
+    instance_id: `01TEST${pid}`,
     label,
     pid,
     started:
@@ -32,6 +33,12 @@ function proc(
     first_event_ns: startNs,
     last_event_ns: startNs,
     max_severity: null,
+    parent_edge: "root",
+    claimed_ppid: null,
+    source_set: [],
+    indicators: [],
+    related_logs: [],
+    related_logs_omitted: 0,
     children,
     ...extra,
   };
@@ -128,6 +135,56 @@ describe("flattenForest", () => {
     // untrusted input and the viewer must not hang on one.
     expect(() => flattenForest([a], new Set(), textPredicate("zzz"))).not.toThrow();
   });
+
+  it("nests Event Log rows under the process they describe", () => {
+    const f = [
+      proc("powershell.exe", 1200, 1100, [], {
+        related_logs: [
+          {
+            event_id: 9,
+            log_id: 4688,
+            kind: "process_start",
+            source: "evtx",
+            iso: "t+1100",
+            summary: "[4688] powershell.exe started",
+            ts_ns: 1100,
+          },
+        ],
+        related_logs_omitted: 0,
+      }),
+    ];
+    const rows = flattenForest(f, new Set());
+    expect(rows).toHaveLength(2);
+    expect(rows[0].log).toBeUndefined();
+    expect(rows[0].hasChildren).toBe(true);
+    expect(rows[1].log?.log_id).toBe(4688);
+    expect(rows[1].depth).toBe(1);
+  });
+
+  it("finds a process by the Event ID hanging on its branch", () => {
+    const f = [
+      proc("explorer.exe", 1000, 900, [
+        proc("powershell.exe", 1200, 1100, [], {
+          related_logs: [
+            {
+              event_id: 9,
+              log_id: 4688,
+              kind: "process_start",
+              source: "evtx",
+              iso: "t+1100",
+              summary: "[4688] powershell.exe started",
+              ts_ns: 1100,
+            },
+          ],
+        }),
+      ]),
+    ];
+    const rows = flattenForest(f, new Set(), textPredicate("4688"));
+    expect(rows.map((r) => r.node.label)).toEqual(["explorer.exe", "powershell.exe", "powershell.exe"]);
+    expect(rows[2].log?.log_id).toBe(4688);
+    expect(rows[0].contextOnly).toBe(true);
+    expect(rows[1].contextOnly).toBe(false);
+  });
 });
 
 describe("rangePredicate", () => {
@@ -148,9 +205,26 @@ describe("rangePredicate", () => {
     expect(rows[0].contextOnly).toBe(true);
   });
 
-  it("keeps a process whose start time could not be read", () => {
-    const f = [proc("System", 4, null)];
-    expect(flattenForest(f, new Set(), rangePredicate(9e9, 9e9)).length).toBe(1);
+  it("keeps a process whose correlated Event ID falls inside the window", () => {
+    const f = [
+      proc("powershell.exe", 1200, 100, [], {
+        related_logs: [
+          {
+            event_id: 9,
+            log_id: 4688,
+            kind: "process_start",
+            source: "evtx",
+            iso: "t+1100",
+            summary: "[4688] powershell.exe started",
+            ts_ns: 1100,
+          },
+        ],
+      }),
+    ];
+    const rows = flattenForest(f, new Set(), rangePredicate(1000, 1300));
+    expect(rows).toHaveLength(2);
+    expect(rows[0].contextOnly).toBe(false);
+    expect(rows[1].log?.log_id).toBe(4688);
   });
 });
 

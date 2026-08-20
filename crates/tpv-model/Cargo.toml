@@ -8,5 +8,6 @@ description = "OS-neutral entity, event and finding model shared by every TreePV
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="docs/assets/icon.png" width="128" alt="TreePView icon">
-</p>
-
-<p align="center">
   <img src="docs/assets/title.png" width="720" alt="TreePView">
 </p>
 
@@ -21,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/newtonjin/TreePView/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-4c9aff?style=for-the-badge" alt="v0.1.0"></a>
+  <a href="https://github.com/newtonjin/TreePView/releases/tag/v0.2.0"><img src="https://img.shields.io/badge/release-v0.2.0-4c9aff?style=for-the-badge" alt="v0.2.0"></a>
   <img src="https://img.shields.io/badge/license-Apache%202.0-222c38?style=for-the-badge" alt="Apache-2.0">
   <img src="https://img.shields.io/badge/AI%20percentage-57%25-ff4d5e?style=for-the-badge" alt="AI percentage: 57%">
   <img src="https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
@@ -63,11 +59,7 @@ Then someone invoiced **half a million dollars** for a “single pane of glass�
          twelve charts. still one line of text.
 ```
 
-You were not investigating. You were waiting for a spinner invented by someone who has never grabbed a USB stick at 2 a.m.
 
-<p align="center">
-  <img src="docs/images/ir-then-now.png" width="900" alt="Left: drowning in tasklist. Right: a process tree. Center: the expensive pane of glass, cancelled.">
-</p>
 
 TreePView is the other extreme.
 
@@ -85,13 +77,10 @@ TreePView is the other extreme.
                                  '------'                  leave.
 ```
 
-<p align="center">
-  <img src="docs/images/usb-kit.png" width="900" alt="tpv.exe on a USB stick, a sealed .tpv case, TreePView on the analysis PC">
-</p>
 
 No installer on the host. No service. No “phone home to enrich”. Collect, pull the stick, open the case.
 
-**[Download v0.1](https://github.com/newtonjin/TreePView/releases/tag/v0.1.0)** · **[Field card](bin/HOW-TO.txt)** · **[Usage](docs/usage.md)** · **[Artifact catalog](docs/artifacts.md)**
+**[Download v0.2](https://github.com/newtonjin/TreePView/releases/tag/v0.2.0)** · **[Field card](bin/HOW-TO.txt)** · **[Usage](docs/usage.md)** · **[Artifact catalog](docs/artifacts.md)**
 
 | | Binary | Where | What |
 |---|---|---|---|
@@ -120,7 +109,7 @@ TreePView.exe E:\HOST-….tpv
 Paste hashes / IPs / names into **Hunt**. Export **CSV / JSONL / Report**. Click a finding instead of pretending you grepped 400 000 Security events by hand.
 
 <p align="center">
-  <img src="docs/images/viewer.png" width="900" alt="TreePView viewer: process tree, timeline, inspector">
+ <img width="1919" height="1031" alt="Captura de tela 2026-08-18 222302" src="https://github.com/user-attachments/assets/5ec6849c-ff1d-44fe-91e1-a9aa25f07c3e" />
 </p>
 
 ```text

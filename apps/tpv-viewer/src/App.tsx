@@ -18,6 +18,7 @@ import {
   type ManifestEntry,
   type ProcessNode,
   type VerifyReport,
+  withDefaultExcludes,
 } from "./api";
 import { FilterBar } from "./components/FilterBar";
 import { EventTable } from "./components/EventTable";
@@ -139,7 +140,7 @@ export default function App() {
     if (center === "logs") {
       return { ...base, logsOnly: true, networkOnly: false, sources: [] };
     }
-    return base;
+    return withDefaultExcludes(base);
   }, [filter, view, focusedEntity, caseInfo?.span, center]);
 
   // Only the non-time part of the filter drives the histogram, otherwise zooming
@@ -149,7 +150,7 @@ export default function App() {
     if (center === "logs") {
       return { ...base, logsOnly: true, networkOnly: false, sources: [] };
     }
-    return base;
+    return withDefaultExcludes(base);
   }, [filter, focusedEntity, center]);
 
   // Resolved from the tree when possible so the chip reads "brave.exe" rather
@@ -348,12 +349,18 @@ export default function App() {
         <ProcessTree
           roots={tree}
           selected={focusedEntity}
+          selectedEventId={target.kind === "event" ? target.id : null}
           collapsed={collapsed}
           onToggle={toggleNode}
           onSetCollapsed={setCollapsed}
-          onSelect={(node) => {
+          onSelect={(node, logEventId) => {
             setFocusedEntity(node?.key ?? null);
-            if (node) setTarget({ kind: "entity", key: node.key });
+            if (!node) {
+              setTarget({ kind: "case" });
+              return;
+            }
+            if (logEventId != null) setTarget({ kind: "event", id: logEventId });
+            else setTarget({ kind: "entity", key: node.key });
           }}
         />
 
@@ -404,6 +411,11 @@ export default function App() {
                 nested under the parent that spawned them, oldest first
               </span>
             )}
+            {center === "events" && !filter.kinds?.length && (
+              <span className="hint">
+                hiding live snapshots and module loads — pick a kind to see them
+              </span>
+            )}
             {center === "logs" && (
               <span className="hint">
                 column filters and right-click actions apply to the log view
@@ -418,9 +430,11 @@ export default function App() {
               onToggle={toggleNode}
               match={lineageMatch}
               selected={focusedEntity}
-              onSelect={(n) => {
+              selectedEventId={target.kind === "event" ? target.id : null}
+              onSelect={(n, logEventId) => {
                 setFocusedEntity(n.key);
-                setTarget({ kind: "entity", key: n.key });
+                if (logEventId != null) setTarget({ kind: "event", id: logEventId });
+                else setTarget({ kind: "entity", key: n.key });
               }}
             />
           ) : (

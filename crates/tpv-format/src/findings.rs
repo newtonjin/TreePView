@@ -4,7 +4,7 @@
 //! the events it rests on so an analyst can discard the opinion without
 //! touching the evidence. Re-running replaces the table wholesale.
 
-use tpv_model::{Confidence, EventKind, Finding, Severity};
+use tpv_model::{Confidence, EdgeState, EventKind, Finding, Severity};
 
 use crate::error::Result;
 use crate::reader::{CaseReader, EventFilter, EventRow};
@@ -20,6 +20,8 @@ pub fn scan(r: &CaseReader) -> Result<Vec<Finding>> {
     out.extend(encoded_powershell(r)?);
     out.extend(logon_type_10(r)?);
     out.extend(unlinked_eprocess(r)?);
+    out.extend(forest_indicators(r)?);
+    out.extend(log_cleared(r)?);
     out.retain(|f| f.is_supported());
     Ok(out)
 }
@@ -165,6 +167,176 @@ fn unlinked_eprocess(r: &CaseReader) -> Result<Vec<Finding>> {
             .maybe_about(e.entity_key)
         })
         .collect())
+}
+
+fn log_cleared(r: &CaseReader) -> Result<Vec<Finding>> {
+    let rows = r.events(
+        &EventFilter {
+            log_ids: vec![1102, 104],
+            ..Default::default()
+        },
+        PER_RULE,
+        0,
+    )?;
+    Ok(rows
+        .into_iter()
+        .map(|e| {
+            Finding::new(
+                "LOG_CLEARED",
+                Severity::High,
+                Confidence::High,
+                "Event log cleared",
+                e.summary.clone(),
+                vec![e.id],
+            )
+            .maybe_about(e.entity_key)
+        })
+        .collect())
+}
+
+fn forest_indicators(r: &CaseReader) -> Result<Vec<Finding>> {
+    let forest = r.process_forest()?;
+    let by_id: std::collections::HashMap<_, _> =
+        forest.instances.iter().map(|i| (&i.id, i)).collect();
+    let mut out = Vec::new();
+    for inst in &forest.instances {
+        let evidence = inst.event_ids.clone();
+        if evidence.is_empty() {
+            continue;
+        }
+        let key = inst
+            .entity_keys
+            .iter()
+            .next()
+            .cloned()
+            .or_else(|| Some(tpv_model::entity_key_for(inst.pid, inst.start_utc_ns)));
+        let image = inst.image_path.as_deref().unwrap_or("process");
+        for ind in &inst.indicators {
+            let (sev, title, detail) = match ind.as_str() {
+                "CMDLINE_PEB_MISMATCH" => (
+                    Severity::High,
+                    "PEB command line disagrees with 4688",
+                    format!(
+                        "{image} (pid {}): PEB argv was overwritten after start, or the two sources never agreed",
+                        inst.pid
+                    ),
+                ),
+                "PROC_UNLINKED" => (
+                    Severity::Critical,
+                    "Process in memory, missing from the live list",
+                    format!("{image} (pid {}) is a DKOM / hidden-process candidate", inst.pid),
+                ),
+                "MASQUERADE_PATH" => (
+                    Severity::High,
+                    "System binary name running outside a system directory",
+                    format!("{image} (pid {})", inst.pid),
+                ),
+                "SHORT_LIVED_SHELL" => (
+                    Severity::Medium,
+                    "Shell lived less than five seconds",
+                    format!("{image} (pid {})", inst.pid),
+                ),
+                _ => continue,
+            };
+            out.push(
+                Finding::new(ind, sev, Confidence::High, title, detail, evidence.clone())
+                    .maybe_about(key.clone()),
+            );
+        }
+        match inst.parent_edge {
+            EdgeState::Impossible => out.push(
+                Finding::new(
+                    "PID_RECYCLED",
+                    Severity::Medium,
+                    Confidence::High,
+                    "Parent PID is not resolvable (recycled)",
+                    format!(
+                        "{image} (pid {}) claimed PPID {:?} after that PID's previous occupant had exited; the edge was not drawn",
+                        inst.pid, inst.claimed_ppid
+                    ),
+                    evidence.clone(),
+                )
+                .maybe_about(key.clone()),
+            ),
+            EdgeState::Orphaned if inst.pid > 4 => out.push(
+                Finding::new(
+                    "PROC_ORPHANED",
+                    Severity::Low,
+                    Confidence::Medium,
+                    "Parent PID matches no instance in this case",
+                    format!("{image} (pid {}) claimed PPID {:?}", inst.pid, inst.claimed_ppid),
+                    evidence.clone(),
+                )
+                .maybe_about(key.clone()),
+            ),
+            _ => {}
+        }
+        if let Some(pid) = &inst.parent_id {
+            if let Some(parent) = by_id.get(pid) {
+                let cmd = inst
+                    .fields
+                    .iter()
+                    .find(|f| f.field == "command_line")
+                    .map(|f| f.value.as_str());
+                if suspect_parent(
+                    parent.image_path.as_deref(),
+                    inst.image_path.as_deref(),
+                    cmd,
+                ) {
+                    out.push(
+                        Finding::new(
+                            "SUSPECT_PARENT",
+                            Severity::High,
+                            Confidence::Medium,
+                            "Unusual parent → child pair",
+                            format!(
+                                "{} → {image} (pid {} ← {})",
+                                parent.image_path.as_deref().unwrap_or("parent"),
+                                inst.pid,
+                                parent.pid
+                            ),
+                            evidence,
+                        )
+                        .maybe_about(key),
+                    );
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn suspect_parent(parent: Option<&str>, child: Option<&str>, child_cmd: Option<&str>) -> bool {
+    let pb = basename(parent);
+    let cb = basename(child);
+    if pb.is_empty() || cb.is_empty() {
+        return false;
+    }
+    let office = matches!(
+        pb.as_str(),
+        "winword.exe" | "excel.exe" | "powerpnt.exe" | "outlook.exe" | "onenote.exe"
+    );
+    let shell = matches!(
+        cb.as_str(),
+        "cmd.exe" | "powershell.exe" | "pwsh.exe" | "wscript.exe" | "cscript.exe" | "mshta.exe"
+    );
+    if pb == "services.exe" && shell {
+        return true;
+    }
+    if office && shell {
+        return true;
+    }
+    if pb == "explorer.exe" && cb == "rundll32.exe" {
+        let args = child_cmd.unwrap_or("");
+        return args.contains(' ') && args.len() > "rundll32.exe".len();
+    }
+    false
+}
+
+fn basename(path: Option<&str>) -> String {
+    path.and_then(|p| p.rsplit(['\\', '/']).next())
+        .unwrap_or("")
+        .to_ascii_lowercase()
 }
 
 fn kind(r: &CaseReader, k: EventKind) -> Result<Vec<EventRow>> {

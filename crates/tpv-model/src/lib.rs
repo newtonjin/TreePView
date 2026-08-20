@@ -16,6 +16,7 @@ pub mod custody;
 pub mod entity;
 pub mod event;
 pub mod finding;
+pub mod forest;
 pub mod host;
 pub mod time;
 
@@ -23,6 +24,11 @@ pub use custody::{AccessMethod, Custody, ManifestEntry};
 pub use entity::{normalize_path, Entity, EntityKind, ProcessKey};
 pub use event::{Edge, EdgeKind, Event, EventKind, Source};
 pub use finding::{Confidence, Finding, Severity};
+pub use forest::{
+    entity_key_for, reconcile, EdgeState, FieldConfidence, FieldSource, Forest, ForestStats,
+    Observation, ObservationRole, ParentClaim, ProcessField, ProcessInstance, SourceLayer,
+    DEFAULT_MATCH_TOLERANCE_NS,
+};
 pub use host::{CollectionProfile, HostInfo, MemoryMode, ReferenceClock};
 pub use time::{filetime_to_unix_ns, Timestamp, TsFlags, TsPrecision, TzSource};
 
